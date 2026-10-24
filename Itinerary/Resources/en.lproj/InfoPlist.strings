@@ -1,0 +1,7 @@
+/* English Info.plist strings. */
+
+"CFBundleDisplayName" = "Itinerary by Leonera Labs";
+"NSMicrophoneUsageDescription" = "Itinerary records your voice so you can dictate the activities you want to plan.";
+"NSLocationWhenInUseUsageDescription" = "Your location is only used when you ask to set your home or office to where you are right now.";
+"NSCalendarsFullAccessUsageDescription" = "Itinerary reads the events of the calendars you select so they stay fixed when it plans your day.";
+"NSCalendarsUsageDescription" = "Itinerary reads the events of the calendars you select so they stay fixed when it plans your day.";

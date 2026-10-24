@@ -1,0 +1,385 @@
+name: Build
+
+on:
+  push:
+    branches: ['**', '!gh-pages']
+  workflow_dispatch:
+
+# Builds are never cancelled: main builds run one after another (so version numbers never collide),
+# every other run gets its own group.
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && 'main' || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: read
+
+env:
+  APP_NAME: Itinerary by Leonera Labs
+  APP_BUNDLE_ID: com.leonardoramirezr.itinerarybyleoneralabs
+  PROJECT: Itinerary.xcodeproj
+  SCHEME: Itinerary
+  APP_ICON: Itinerary/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build, sign and publish
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check signing secrets
+        id: signing
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=""
+          present=0
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            if [ -n "${!name}" ]; then
+              present=$((present + 1))
+            else
+              missing="$missing $name"
+            fi
+          done
+          if [ "$present" -eq 0 ]; then
+            echo "::warning title=Unsigned build::No signing secrets are configured, so an unsigned IPA is built and nothing is published. Add ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 and APPLE_TEAM_ID to sign and publish."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$missing" ]; then
+            echo "::error title=Incomplete signing secrets::Missing repository secrets:$missing. Configure all of ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 and APPLE_TEAM_ID to sign the app, or remove all of them to build an unsigned IPA."
+            exit 1
+          else
+            echo "All signing secrets are configured."
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute version and tag
+        id: version
+        run: |
+          sha7="$(git rev-parse --short=7 HEAD)"
+          title="$(git log -1 --format=%s)"
+          last="$(git tag --list '0.*.0' | grep -E '^0\.[0-9]+\.0$' | sort -t. -k2,2n | tail -n 1 || true)"
+          minor=0
+          if [ -n "$last" ]; then
+            minor="$(echo "$last" | cut -d. -f2)"
+          fi
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            channel=stable
+            # A re-run of a commit that is already released keeps its version.
+            existing="$(git tag --points-at HEAD | grep -E '^0\.[0-9]+\.0$' | sort -t. -k2,2n | tail -n 1 || true)"
+            if [ -n "$existing" ]; then
+              tag="$existing"
+            else
+              tag="0.$((minor + 1)).0"
+            fi
+            marketing="$tag"
+          else
+            channel=branch
+            tag="build-${GITHUB_RUN_NUMBER}-${sha7}"
+            marketing="0.${minor}.${GITHUB_RUN_NUMBER}"
+          fi
+          {
+            echo "tag=$tag"
+            echo "channel=$channel"
+            echo "marketing=$marketing"
+            echo "sha7=$sha7"
+            echo "title<<COMMIT_TITLE_EOF"
+            echo "$title"
+            echo "COMMIT_TITLE_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Tag: $tag ($channel), version $marketing ($GITHUB_RUN_NUMBER)"
+          echo "Commit: $title"
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install XcodeGen
+        run: command -v xcodegen >/dev/null 2>&1 || brew install xcodegen
+
+      - name: Check localizations
+        run: python3 scripts/check-localizations.py
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # --- Signed build ---------------------------------------------------------------------------------
+
+      - name: Write App Store Connect key
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key_path="$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          python3 scripts/asc.py write-key "$key_path"
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Validate App Store Connect access
+        if: steps.signing.outputs.signed == 'true'
+        run: python3 scripts/asc.py check
+
+      - name: Record existing development certificates
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          python3 scripts/asc.py keychain-serials > "$RUNNER_TEMP/dev-certs-before.txt"
+          echo "Apple Development certificates in the keychain before the build: $(grep -c . "$RUNNER_TEMP/dev-certs-before.txt" || true)"
+
+      - name: Archive (automatic signing)
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/logs"
+          if command -v xcbeautify >/dev/null 2>&1; then formatter=(xcbeautify --renderer github-actions); else formatter=(cat); fi
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/build/Itinerary.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            APP_BUNDLE_ID="$APP_BUNDLE_ID" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            2>&1 | tee "$RUNNER_TEMP/logs/archive.log" | "${formatter[@]}"
+
+      - name: Export Ad Hoc IPA
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          set -o pipefail
+          if command -v xcbeautify >/dev/null 2>&1; then formatter=(xcbeautify --renderer github-actions); else formatter=(cat); fi
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>release-testing</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>destination</key>
+            <string>export</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/build/Itinerary.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            2>&1 | tee "$RUNNER_TEMP/logs/export.log" | "${formatter[@]}"
+          ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' | head -n 1)"
+          if [ -z "$ipa" ]; then
+            echo "::error::xcodebuild -exportArchive did not produce an IPA."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$ipa" "$RUNNER_TEMP/out/Itinerary.ipa"
+
+      - name: Verify Ad Hoc provisioning profiles
+        id: verify
+        if: steps.signing.outputs.signed == 'true'
+        run: python3 scripts/asc.py verify-ipa "$RUNNER_TEMP/out/Itinerary.ipa"
+
+      # --- Unsigned build (no secrets) ------------------------------------------------------------------
+
+      - name: Build unsigned IPA
+        if: steps.signing.outputs.signed != 'true'
+        env:
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/logs" "$RUNNER_TEMP/unsigned/Payload" "$RUNNER_TEMP/out"
+          if command -v xcbeautify >/dev/null 2>&1; then formatter=(xcbeautify --renderer github-actions); else formatter=(cat); fi
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/build/Itinerary.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            APP_BUNDLE_ID="$APP_BUNDLE_ID" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            2>&1 | tee "$RUNNER_TEMP/logs/archive.log" | "${formatter[@]}"
+          cp -R "$RUNNER_TEMP/build/Itinerary.xcarchive/Products/Applications/Itinerary.app" "$RUNNER_TEMP/unsigned/Payload/"
+          (cd "$RUNNER_TEMP/unsigned" && zip -qry "$RUNNER_TEMP/out/Itinerary-unsigned.ipa" Payload)
+          echo "Unsigned IPA: $RUNNER_TEMP/out/Itinerary-unsigned.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Itinerary-${{ steps.version.outputs.tag }}
+          path: ${{ runner.temp }}/out/*.ipa
+          if-no-files-found: error
+
+      # --- Publish --------------------------------------------------------------------------------------
+
+      - name: Prepare manifest icons
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          sips -z 57 57 "$APP_ICON" --out "$RUNNER_TEMP/out/icon-57.png" >/dev/null
+          sips -z 512 512 "$APP_ICON" --out "$RUNNER_TEMP/out/icon-512.png" >/dev/null
+
+      - name: Resolve GitHub Pages URL
+        id: pages
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          url="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.html_url' 2>/dev/null || true)"
+          if [ -z "$url" ] || [ "$url" = "null" ]; then
+            owner="$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+            url="https://$owner.github.io/$REPO_NAME/"
+            echo "GitHub Pages is not available through the API yet; using $url"
+          fi
+          case "$url" in
+            */) ;;
+            *) url="$url/" ;;
+          esac
+          echo "base_url=$url" >> "$GITHUB_OUTPUT"
+          echo "page_url=$url$TAG/" >> "$GITHUB_OUTPUT"
+          echo "Install page: $url$TAG/"
+
+      - name: Publish to GitHub Pages
+        id: publish
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+          IPA_PATH: ${{ runner.temp }}/out/Itinerary.ipa
+          ICON_57: ${{ runner.temp }}/out/icon-57.png
+          ICON_512: ${{ runner.temp }}/out/icon-512.png
+          BUNDLE_ID: ${{ env.APP_BUNDLE_ID }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          COMMIT_TITLE: ${{ steps.version.outputs.title }}
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEVICES: ${{ steps.verify.outputs.devices }}
+          MAX_BRANCH_BUILDS: '20'
+        run: bash scripts/publish-pages.sh
+
+      - name: Create GitHub release
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          COMMIT_TITLE: ${{ steps.version.outputs.title }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+          PAGE_URL: ${{ steps.pages.outputs.page_url }}
+          DEVICES: ${{ steps.verify.outputs.devices }}
+        run: |
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "### $COMMIT_TITLE"
+            echo
+            echo "📲 **Install on iPhone:** $PAGE_URL"
+            echo
+            echo "Open the link in Safari on an iPhone whose UDID is registered in the Apple Developer account."
+            echo
+            echo "- Version: $MARKETING_VERSION ($BUILD_NUMBER)"
+            echo "- Branch: \`$GITHUB_REF_NAME\`"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Devices in the Ad Hoc profile: $DEVICES"
+            echo "- All builds: $BASE_URL"
+          } > "$notes"
+          asset="$RUNNER_TEMP/out/Itinerary-$TAG.ipa"
+          cp "$RUNNER_TEMP/out/Itinerary.ipa" "$asset"
+          title="$TAG · $COMMIT_TITLE"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$asset" --clobber
+            gh release edit "$TAG" --title "$title" --notes-file "$notes"
+          elif [ "$CHANNEL" = "stable" ]; then
+            gh release create "$TAG" "$asset" --target "$GITHUB_SHA" --title "$title" --notes-file "$notes" --latest
+          else
+            gh release create "$TAG" "$asset" --target "$GITHUB_SHA" --title "$title" --notes-file "$notes" --prerelease --latest=false
+          fi
+
+      - name: Write job summary
+        if: always() && steps.version.outputs.tag != ''
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          CHANNEL: ${{ steps.version.outputs.channel }}
+          COMMIT_TITLE: ${{ steps.version.outputs.title }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          PUBLISHED: ${{ steps.publish.outcome }}
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+          PAGE_URL: ${{ steps.pages.outputs.page_url }}
+          DEVICES: ${{ steps.verify.outputs.devices }}
+        run: |
+          {
+            echo "## $APP_NAME · $TAG"
+            echo
+            echo "**Commit:** $COMMIT_TITLE"
+            echo
+            if [ "$PUBLISHED" = "success" ]; then
+              echo "📲 **Install on iPhone:** [$PAGE_URL]($PAGE_URL)"
+              echo
+              echo "Open the link in Safari on a registered iPhone. Ad Hoc profile devices: $DEVICES."
+              echo "All builds: [$BASE_URL]($BASE_URL)"
+              if [ "$CHANNEL" = "stable" ]; then echo; echo "Published as the latest stable release."; else echo; echo "Published as a pre-release."; fi
+            elif [ "$SIGNED" = "false" ]; then
+              echo "⚠️ Unsigned IPA (no signing secrets). Download it from the artifacts of this run."
+            else
+              echo "❌ The build was not published. Check the failed step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Revoke temporary development certificates
+        if: always() && steps.signing.outputs.signed == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: python3 scripts/asc.py revoke-new-dev-certs "$RUNNER_TEMP/dev-certs-before.txt"
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ github.run_number }}
+          path: ${{ runner.temp }}/logs
+          if-no-files-found: ignore
