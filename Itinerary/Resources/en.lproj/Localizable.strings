@@ -33,6 +33,7 @@
 "Context sent to the speech to text model to improve the transcription." = "Context sent to the speech to text model to improve the transcription.";
 "Continue" = "Continue";
 "Could not be scheduled" = "Could not be scheduled";
+"Could not load the models: %@" = "Could not load the models: %@";
 "Create an OAuth client of type iOS in Google Cloud Console with the bundle ID of this app and paste its client ID here. The README explains every step." = "Create an OAuth client of type iOS in Google Cloud Console with the bundle ID of this app and paste its client ID here. The README explains every step.";
 "Current location" = "Current location";
 "Current time (HH:mm)" = "Current time (HH:mm)";
@@ -86,6 +87,7 @@
 "Keep the JSON structure of the default prompt: the app reads summary, items (title, start, end, kind, location, notes) and unscheduled." = "Keep the JSON structure of the default prompt: the app reads summary, items (title, start, end, kind, location, notes) and unscheduled.";
 "Language of the app, used for the answer" = "Language of the app, used for the answer";
 "Loading events…" = "Loading events…";
+"Loading models…" = "Loading models…";
 "Location" = "Location";
 "Location access is off. Turn it on in the iPhone Settings app." = "Location access is off. Turn it on in the iPhone Settings app.";
 "Lunch" = "Lunch";

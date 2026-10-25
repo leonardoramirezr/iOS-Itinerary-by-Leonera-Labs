@@ -48,6 +48,48 @@ struct KeyTestSection: View {
     }
 }
 
+/// Model of a provider. Once the provider lists its models they are offered in a picker; until then it is a text field.
+struct ModelRow: View {
+    @Binding var model: String
+    let state: ModelListState
+    let isLoading: Bool
+
+    var body: some View {
+        if case .loaded(let models) = state, !models.isEmpty {
+            Picker("Model", selection: $model) {
+                ForEach(options(from: models), id: \.self) { name in
+                    Text(verbatim: name).tag(name)
+                }
+            }
+        } else {
+            TextField("Model", text: $model)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+
+        if isLoading {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Loading models…")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+
+        if case .failure(let message) = state {
+            Text(String(localized: "Could not load the models: \(message)"))
+                .font(.footnote)
+                .foregroundStyle(.red)
+        }
+    }
+
+    /// The current model stays selectable even when the provider does not list it.
+    private func options(from models: [String]) -> [String] {
+        guard !model.isEmpty, !models.contains(model) else { return models }
+        return [model] + models
+    }
+}
+
 /// List of the LLM providers.
 struct ProvidersView: View {
     @Environment(SettingsStore.self) private var store
@@ -93,6 +135,8 @@ struct ProviderDetailView: View {
     @State private var apiKey = ""
     @State private var config: ProviderConfig
     @State private var testState: KeyTestState = .idle
+    @State private var modelList: ModelListState = .idle
+    @State private var isLoadingModels = false
     @State private var didLoad = false
 
     init(provider: LLMProvider) {
@@ -133,9 +177,7 @@ struct ProviderDetailView: View {
             }
 
             Section {
-                TextField("Model", text: $config.model)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                ModelRow(model: $config.model, state: modelList, isLoading: isLoadingModels)
                 TextField("Base URL", text: $config.baseURL, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -180,12 +222,27 @@ struct ProviderDetailView: View {
             store.settings[config: provider] = newValue
             testState = .idle
         }
+        .task(id: modelSource) {
+            isLoadingModels = true
+            if let state = await ModelCatalog.load(modelSource) {
+                modelList = state
+                isLoadingModels = false
+            }
+        }
     }
 
     private var canTest: Bool {
         let hasKey = !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasAccount = !provider.requiresAccountID || !config.accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasKey && hasAccount
+    }
+
+    /// Endpoint and key the models are listed with. Without a usable key there is nothing to list.
+    private var modelSource: ModelSource {
+        ModelSource(
+            baseURL: config.resolvedBaseURL,
+            apiKey: canTest ? apiKey.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        )
     }
 
     private func testKey() async {
@@ -213,6 +270,8 @@ struct TranscriptionSettingsView: View {
     @Environment(SettingsStore.self) private var store
     @State private var apiKey = ""
     @State private var testState: KeyTestState = .idle
+    @State private var modelList: ModelListState = .idle
+    @State private var isLoadingModels = false
     @State private var didLoad = false
 
     var body: some View {
@@ -235,9 +294,7 @@ struct TranscriptionSettingsView: View {
             }
 
             Section {
-                TextField("Model", text: $store.settings.transcription.model)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                ModelRow(model: $store.settings.transcription.model, state: modelList, isLoading: isLoadingModels)
                 TextField("Base URL", text: $store.settings.transcription.baseURL, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -263,18 +320,28 @@ struct TranscriptionSettingsView: View {
             KeychainStore.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), for: LLMProvider.groq.keychainAccount)
             testState = .idle
         }
+        .task(id: modelSource) {
+            isLoadingModels = true
+            if let state = await ModelCatalog.load(modelSource) {
+                modelList = state
+                isLoadingModels = false
+            }
+        }
+    }
+
+    /// Endpoint and key the Groq models are listed with.
+    private var modelSource: ModelSource {
+        ModelSource(
+            baseURL: store.settings.transcription.resolvedBaseURL,
+            apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 
     private func testKey() async {
         testState = .testing
         let config = store.settings.transcription
-        let service = TranscriptionService(
-            baseURL: config.resolvedBaseURL,
-            model: config.model,
-            apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
         do {
-            let models = try await service.availableModels()
+            let models = try await ModelCatalog.fetch(modelSource)
             let model = config.model.trimmingCharacters(in: .whitespacesAndNewlines)
             if models.isEmpty || models.contains(model) {
                 testState = .success(String(localized: "The key works and \(model) is available."))
