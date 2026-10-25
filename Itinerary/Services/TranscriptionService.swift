@@ -47,28 +47,8 @@ struct TranscriptionService {
         }
         return decoded.text
     }
-
-    /// Lists the model identifiers available for the key. Used to test the key.
-    func availableModels() async throws -> [String] {
-        let endpoint = baseURL + "/models"
-        guard let url = URL(string: endpoint) else { throw AppError.invalidURL(endpoint) }
-        var request = URLRequest(url: url, timeoutInterval: 30)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
-        try HTTP.validate(response, data: data)
-        let decoded = try? JSONDecoder().decode(ModelsResponse.self, from: data)
-        return decoded?.data.map(\.id) ?? []
-    }
 }
 
 private struct TranscriptionResponse: Decodable {
     let text: String
-}
-
-private struct ModelsResponse: Decodable {
-    struct Model: Decodable {
-        let id: String
-    }
-
-    let data: [Model]
 }

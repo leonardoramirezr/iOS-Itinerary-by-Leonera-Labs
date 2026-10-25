@@ -27,7 +27,8 @@ move flexible activities to the morning.
 
 ### LLM providers
 
-API keys are stored in the iOS Keychain. Model and base URL can be changed per provider; the app calls
+API keys are stored in the iOS Keychain. As soon as a key is entered, the app lists the models of the provider
+(`{base URL}/models`) and offers them in a picker. Model and base URL can be changed per provider; the app calls
 `{base URL}/chat/completions`.
 
 | Provider | Default base URL | Default model | Get a key |
@@ -44,7 +45,7 @@ URL and the model at the same time.
 ### Speech to text
 
 Dictation is transcribed by Groq (`whisper-large-v3-turbo` through `{base URL}/audio/transcriptions`). It uses
-the same key as the Groq LLM provider. Its test button lists the models available for the key.
+the same key as the Groq LLM provider. The models available for the key are listed automatically in a picker.
 
 ### Google Calendar
 

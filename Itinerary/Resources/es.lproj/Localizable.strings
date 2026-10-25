@@ -33,6 +33,7 @@
 "Context sent to the speech to text model to improve the transcription." = "Contexto que se envía al modelo de voz a texto para mejorar la transcripción.";
 "Continue" = "Continuar";
 "Could not be scheduled" = "No se pudo programar";
+"Could not load the models: %@" = "No se pudieron cargar los modelos: %@";
 "Create an OAuth client of type iOS in Google Cloud Console with the bundle ID of this app and paste its client ID here. The README explains every step." = "Crea un cliente OAuth de tipo iOS en Google Cloud Console con el bundle ID de esta app y pega aquí su ID de cliente. El README explica cada paso.";
 "Current location" = "Ubicación actual";
 "Current time (HH:mm)" = "Hora actual (HH:mm)";
@@ -86,6 +87,7 @@
 "Keep the JSON structure of the default prompt: the app reads summary, items (title, start, end, kind, location, notes) and unscheduled." = "Conserva la estructura JSON del prompt predeterminado: la app lee summary, items (title, start, end, kind, location, notes) y unscheduled.";
 "Language of the app, used for the answer" = "Idioma de la app, usado en la respuesta";
 "Loading events…" = "Cargando eventos…";
+"Loading models…" = "Cargando modelos…";
 "Location" = "Ubicación";
 "Location access is off. Turn it on in the iPhone Settings app." = "El acceso a la ubicación está desactivado. Actívalo en la app Ajustes del iPhone.";
 "Lunch" = "Comida";
