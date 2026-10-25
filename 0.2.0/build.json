@@ -1,0 +1,19 @@
+{
+  "tag": "0.2.0",
+  "channel": "stable",
+  "app_name": "Itinerary by Leonera Labs",
+  "bundle_id": "com.leonardoramirezr.itinerarybyleoneralabs",
+  "version": "0.2.0",
+  "build_number": 4,
+  "commit_title": "List provider models automatically and pick one from a list (#2)",
+  "commit_sha": "284b04591edb67efdfe84fe948d7aa82eb78c7ce",
+  "branch": "main",
+  "repository": "leonardoramirezr/iOS-Itinerary-by-Leonera-Labs",
+  "run_url": "https://github.com/leonardoramirezr/iOS-Itinerary-by-Leonera-Labs/actions/runs/40167050406",
+  "devices": "1",
+  "created_at": "2026-10-25T05:53:35Z",
+  "page_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/0.2.0/",
+  "ipa_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/0.2.0/Itinerary.ipa",
+  "manifest_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/0.2.0/manifest.plist",
+  "install_url": "itms-services://?action=download-manifest&url=https%3A%2F%2Fleonardoramirezr.github.io%2FiOS-Itinerary-by-Leonera-Labs%2F0.2.0%2Fmanifest.plist"
+}

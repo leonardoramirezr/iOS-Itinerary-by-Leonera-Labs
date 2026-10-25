@@ -1,0 +1,19 @@
+{
+  "tag": "build-1-32fdfb2",
+  "channel": "branch",
+  "app_name": "Itinerary by Leonera Labs",
+  "bundle_id": "com.leonardoramirezr.itinerarybyleoneralabs",
+  "version": "0.0.1",
+  "build_number": 1,
+  "commit_title": "Add Itinerary app, localization and Ad Hoc CI/CD to GitHub Pages",
+  "commit_sha": "32fdfb220dcd044eb50e9c11ab4fc165214eaf9d",
+  "branch": "claude/lucid-pascal-22eok9",
+  "repository": "leonardoramirezr/iOS-Itinerary-by-Leonera-Labs",
+  "run_url": "https://github.com/leonardoramirezr/iOS-Itinerary-by-Leonera-Labs/actions/runs/40119980065",
+  "devices": "1",
+  "created_at": "2026-10-24T18:18:07Z",
+  "page_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/build-1-32fdfb2/",
+  "ipa_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/build-1-32fdfb2/Itinerary.ipa",
+  "manifest_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/build-1-32fdfb2/manifest.plist",
+  "install_url": "itms-services://?action=download-manifest&url=https%3A%2F%2Fleonardoramirezr.github.io%2FiOS-Itinerary-by-Leonera-Labs%2Fbuild-1-32fdfb2%2Fmanifest.plist"
+}

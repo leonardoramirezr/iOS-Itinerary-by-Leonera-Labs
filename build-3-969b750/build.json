@@ -1,0 +1,19 @@
+{
+  "tag": "build-3-969b750",
+  "channel": "branch",
+  "app_name": "Itinerary by Leonera Labs",
+  "bundle_id": "com.leonardoramirezr.itinerarybyleoneralabs",
+  "version": "0.1.3",
+  "build_number": 3,
+  "commit_title": "List provider models automatically and pick one from a list",
+  "commit_sha": "969b7502aba9791c9221682967ef7575054c7be8",
+  "branch": "feature/model-picker-auto-fetch",
+  "repository": "leonardoramirezr/iOS-Itinerary-by-Leonera-Labs",
+  "run_url": "https://github.com/leonardoramirezr/iOS-Itinerary-by-Leonera-Labs/actions/runs/40166802322",
+  "devices": "1",
+  "created_at": "2026-10-25T05:49:41Z",
+  "page_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/build-3-969b750/",
+  "ipa_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/build-3-969b750/Itinerary.ipa",
+  "manifest_url": "https://leonardoramirezr.github.io/iOS-Itinerary-by-Leonera-Labs/build-3-969b750/manifest.plist",
+  "install_url": "itms-services://?action=download-manifest&url=https%3A%2F%2Fleonardoramirezr.github.io%2FiOS-Itinerary-by-Leonera-Labs%2Fbuild-3-969b750%2Fmanifest.plist"
+}
